@@ -106,6 +106,63 @@ MeridianDefender_CL
 
 ---
 
+### 🏁 Flag 4 – The Planted Root Shell
+- **Answer:** /tmp/rootbash -p
+- **Discovery:** /tmp/rootbash -p, executed by svc_backup with euid=0. The -p flag preserves SUID privileges on a bash copy. This is the privilege escalation pivot. 
+- **Key Timestamp:** 2026-02-06T04:40:15Z
+
+```kql
+MeridianAudit_CL
+| where isnotempty(EventTime_t)
+| where EventTime_t > datetime(2026-02-06 04:08:00)
+| where Types_s has "EXECVE"
+| where auid_s == "1001" and euid_s == "0"
+| project EventTime_t, Argv_s, exe_s, cwd_s, uid_s
+| order by EventTime_t asc
+```
+
+<img width="603" height="193" alt="Meridian Flag 4" src="https://github.com/user-attachments/assets/e960caa3-829b-4617-9491-b83fa0c7d528" />
+
+The attacker has escalated their account privileges. Their next step is to gain persistence on the system. Find out how they did it and how it survived.
+
+---
+
+### 🏁 Flag 5a – Persistence: The Second Foothold 
+- **Answer:** /opt/meridian/scripts/health_check
+- **Discovery:** /opt/meridian/scripts/health_check, real UID 1001 (svc_backup), effective UID 0, PPid 1 (orphaned). Hidden in the app's own scripts folder with a name that reads as routine maintenance. This is the durable persistence mechanism. Unlike /tmp/rootbash, this location blends into the legitimate application structure and survives the automated sweep. 
+- **Key Timestamp:** 2026-02-06T05:30:00Z
+
+```kql
+MeridianSnapshot_CL
+| where isnotempty(EventTime_t)
+| where EventTime_t > datetime(2026-02-06 04:08:00)
+| where ProcBeaconPPid_s == "1"
+| where ProcBeaconUid_s has "1001"
+| project EventTime_t, ProcBeaconPid_s, ProcBeaconPPid_s, ProcBeaconName_s, ProcBeaconExeLink_s, ProcBeaconUid_s
+| order by EventTime_t asc
+```
+
+<img width="1311" height="222" alt="Meridian Flag 5a" src="https://github.com/user-attachments/assets/07617f04-365c-4baf-877f-36279eb8e8d8" />
+
+---
+
+### 🏁 Flag 5b – Persistence: Why it Survived
+- **Answer:**  The sweep only cleans SSH keys, crontabs, temp directories, SUID files in watched paths, and systemmd services. The script isn't one of these five, so it was never removed.
+- **Discovery:** The automated defence caught the /tmp shell in its next sweep and killed it. It caught this second one too -- flagged it as non-baseline, in the log, in plain sight. It's still running. This is the critical detection-remediation gap. The automated tooling flagged it as non-baseline in every sweep but had no remediation rule for scripts in application directories.
+
+```kql
+MeridianDefender_CL
+| where isnotempty(EventTime_t)
+| where EventTime_t > datetime(2026-02-06 04:08:00)
+| where RawMessage_s has_any ("/tmp", "baseline", "kill", "terminat", "remov", "quarantin", "SUID", "setuid", "scripts")
+| project EventTime_t, EventCategory_s, RawMessage_s
+| order by EventTime_t asc
+```
+
+<img width="635" height="376" alt="Meridian Flag 5b" src="https://github.com/user-attachments/assets/2d81926a-b36c-4670-a2fe-87fff63a7401" />
+
+---
+
 ## 🧠 Summary Table
 | Flag | Description                        | Value | MITRE ATT&CK | Definiton |
 |------|------------------------------------|---------------------|---------------------|---------------------|
