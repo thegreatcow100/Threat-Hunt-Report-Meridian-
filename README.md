@@ -11,6 +11,25 @@
 Meridian's portal threw a real incident overnight. Single host, web app in front of a patient database, and a defence stack that has been fighting back automatically the whole time. Some of what it caught is the real intrusion. This hunt focuses on separating the attacker's actions from the noise and determining if the system is still infected. 
 
 ---
+## 🔎 Flag Analysis & Findings
+
+### 🏁 Flag 1 – Fake Antivirus Dropper
+- **Answer:** 4, nmap, curl, whatweb, gobuster
+- **Notes:** Recognising the recon toolchain tells you the attacker's skill level and methodology. In this case, the progression shows methodical recon: port discovery, manual look, tech stack ID, then exhaustive directory enumeration. An attacker who runs WhatWeb between curl and gobuster is fingerprinting the tech stack to choose the right wordlist.
+
+```kql
+MeridianAccess_CL
+| where isnotempty(EventTime_t)
+| where EventTime_t < datetime(2026-02-06 05:55:00)
+| where ClientIp_s == "10.1.134.57"
+| summarize FirstSeen=min(EventTime_t), Requests=count() by UserAgent_s
+| order by FirstSeen asc
+```
+
+<img width="1333" height="228" alt="Meridian flag 1" src="https://github.com/user-attachments/assets/f8454612-4ef7-4e12-9a06-e82c64d8144e" />
+
+Now that we know the reconnaissance tools that the attackers used, we need to figure out how they gained access to the system and what they changed. 
+---
 
 ## 🧠 Summary Table
 | Flag | Description                        | Value | MITRE ATT&CK | Definiton |
