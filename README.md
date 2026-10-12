@@ -13,7 +13,7 @@ Meridian's portal threw a real incident overnight. Single host, web app in front
 ---
 ## 🔎 Flag Analysis & Findings
 
-### 🏁 Flag 1 – Fake Antivirus Dropper
+### 🏁 Flag 1 – The Recon Playbook
 - **Answer:** 4, nmap, curl, whatweb, gobuster
 - **Notes:** Recognising the recon toolchain tells you the attacker's skill level and methodology. In this case, the progression shows methodical recon: port discovery, manual look, tech stack ID, then exhaustive directory enumeration. An attacker who runs WhatWeb between curl and gobuster is fingerprinting the tech stack to choose the right wordlist.
 
@@ -29,6 +29,81 @@ MeridianAccess_CL
 <img width="1333" height="228" alt="Meridian flag 1" src="https://github.com/user-attachments/assets/f8454612-4ef7-4e12-9a06-e82c64d8144e" />
 
 Now that we know the reconnaissance tools that the attackers used, we need to figure out how they gained access to the system and what they changed. 
+
+---
+### 🏁 Flag 2a – Initial Access: Traversal Point
+- **Answer:** config_viewer.php
+- **Discovery:** config_viewer.php, requested directly at 03:52:29, before the gobuster wordlist scan starts at 03:55:05. A deliberate, pre-scan request to a specific vulnerable endpoint indicates prior reconnaissance or leaked intelligence about the application.
+- **Key Timestamp:** 2026-02-06T03:52:29Z
+
+
+```kql
+MeridianAccess_CL
+| where isnotempty(EventTime_t)
+| where ClientIp_s == "10.1.134.57"
+| where EventTime_t < datetime(2026-02-06 03:55:00)
+| project EventTime_t, RequestUri_s, UserAgent_s
+| order by EventTime_t asc
+```
+
+<img width="517" height="202" alt="Meridian Flag 2a" src="https://github.com/user-attachments/assets/cacee12a-c5c0-4dae-83e5-2bd6966225dd" />
+
+---
+
+### 🏁 Flag 2b –  Initial Access: What They Pulled
+- **Answer:** /etc/passwd, database.conf
+- **Discovery:** /etc/passwd was first pulled (04:07:59, 3077 bytes), then database.conf (04:08:34, 1231 bytes). This matters because the gap between the two actions shows deliberate, sequential exploitation, not automated scanning. The passwd file gives valid usernames; database.conf gives reusable credentials.
+
+```kql
+MeridianAccess_CL
+| where isnotempty(EventTime_t)
+| where EventTime_t < datetime(2026-02-06 05:55:00)
+| where RequestUri_s has "config_viewer" and RequestUri_s has "file="
+| where StatusCode_s == "200"
+| extend Decoded = url_decode(RequestUri_s)
+| project EventTime_t, Decoded, ResponseSize_s
+| order by EventTime_t asc
+```
+<img width="564" height="87" alt="Meridian Flag 2b" src="https://github.com/user-attachments/assets/63c2c8e5-7d8e-4f02-8d28-db77c5b3bd4b" />
+
+The attacker has gained access to the system. Which methods worked, and which failed?
+
+---
+
+### 🏁 Flag 3a – Borrowed Access: Method that Worked
+- **Answer:** svc_backup
+- **Discovery:** svc_backup, "Accepted password for svc_backup from 10.1.134.57" at 04:09:31, only 57 seconds after database.conf was read. Credential reuse from the config file. The attacker didn't need to brute-force the login; they read the password from the database.conf file.
+- **Key Timestamp:** 2026-02-06T04:09:31Z
+
+```kql
+MeridianAuth_CL
+| where isnotempty(EventTime_t)
+| where EventTime_t > datetime(2026-02-06 04:08:00)
+| where RawMessage_s has "Accepted password" and RawMessage_s has "10.1.134.57"
+| parse RawMessage_s with * "Accepted password for " User " from " SrcIp " port" *
+| project EventTime_t, User, SrcIp, RawMessage_s
+| order by EventTime_t asc
+```
+<img width="776" height="168" alt="meridian Flag 3a" src="https://github.com/user-attachments/assets/7a7bb3c3-8824-4a6b-bf93-8051b900030a" />
+
+---
+
+### 🏁 Flag 3b – Borrowed Access: Methods that Failed
+- **Answer:**  sudo (command not allowed for svc_backup) and SSH root login (failed, 4 attempts rejected)
+- **Discovery:** The attacker tried two other ways to get root access on the compromised host and failed. The first was utilizing sudo. svc_backup ran sudo but got 'command not allowed'. The account has no sudo privileges configured. The second was through SSH. There were four failed login attempts, two from localhost (10.1.15.67) and two from the attacker IP (10.1.134.57). Root password authentication is either disabled or the attacker didn't have the password. 
+- **Key Timestamp:** sudo (2026-02-06T04:15:07Z) & SSH (2026-02-06T04:44:59Z - 2026-02-06T04:45:41Z)
+
+```kql
+MeridianDefender_CL
+| where isnotempty(EventTime_t)
+| where EventTime_t > datetime(2026-02-06 04:08:00)
+| where EventCategory_s has_any ("AUTH", "SSH")
+| where RawMessage_s has_any ("Failed", "not allowed")
+| project EventTime_t, RawMessage_s
+```
+
+<img width="1018" height="172" alt="Meridian flag 3b" src="https://github.com/user-attachments/assets/5137896d-84c8-4a84-b4c7-38c01bce2354" />
+
 ---
 
 ## 🧠 Summary Table
