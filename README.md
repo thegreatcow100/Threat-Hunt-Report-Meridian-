@@ -161,6 +161,40 @@ MeridianDefender_CL
 
 <img width="635" height="376" alt="Meridian Flag 5b" src="https://github.com/user-attachments/assets/2d81926a-b36c-4670-a2fe-87fff63a7401" />
 
+The second backdoor that the attacker created is pinging to a different location. We need to find out where it is pinging to and if the process is still going on.
+
+---
+### 🏁 Flag 6a – Calling Home
+- **Answer:**  10.1.134.57:43212, not neutralised
+- **Discovery:** The network block stopped the callback but never killed the process itself.
+
+```kql
+MeridianDefender_CL
+| where isnotempty(EventTime_t)
+| where EventTime_t > datetime(2026-02-06 04:08:00)
+| where EventCategory_s == "NETWORK"
+| where DestIp_s == "10.1.134.57"
+| summarize count() by DestPort_s
+| project DestPort_s, count_
+```
+
+<img width="219" height="122" alt="Meridian Flag 6a" src="https://github.com/user-attachments/assets/c327cfb7-1daf-47c6-8d01-bab8bb63438c" />
+
+---
+### 🏁 Flag 6b – Calling Home: What the Block Proves
+- **Answer:**  Proves that the implant is persistent and active. It does not prove that the threat is contained.
+- **Discovery:** The network block proves that the outbound TCP connections to 10.1.134.57:43212 were intercepted and dropped (73 times). The attacker's C2 channel is severed at the network layer. The network block does NOT prove that the backdoor process is stopped, the attacker's code is removed, or the host is contained. The backdoor process (PID 267155) is still running and will resume C2 communication the moment the block is lifted.
+- **Key Timestamp:** 2026-02-06T05:30:00Z
+
+```kql
+MeridianSnapshot_CL
+| where isnotempty(EventTime_t)
+| where EventTime_t > datetime(2026-02-06 04:08:00)
+| project EventTime_t, ProcBeaconExeLink_s, ProcBeaconPid_s
+```
+
+<img width="1444" height="143" alt="Meridian Flag 6b" src="https://github.com/user-attachments/assets/4b8e96a8-90d9-43c0-a7c2-07890a26f907" />
+
 ---
 
 ## 🧠 Summary Table
