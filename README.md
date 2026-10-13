@@ -199,6 +199,42 @@ The attacker has escalated their privileges and established persistence. We need
 
 ---
 
+### 🏁 Flag 7a – The Collection: What left the Database
+- **Answer:**  patient data
+- **Discovery:** "WEB: Patient data export from 10.1.134.57" in the defender log. This is a healthcare portal; the patients table is the highest-value target. This confirms data exfiltration of PII/PHI from the application's primary dataset.
+- **Key Timestamp:** 2026-02-06T03:56:28Z
+
+```kql
+MeridianDefender_CL
+| where isnotempty(EventTime_t)
+| where EventTime_t < datetime(2026-02-06 05:55:00)
+| where EventCategory_s has "WEB" and RawMessage_s has "export"
+| project EventTime_t, EventCategory_s, RawMessage_s
+| order by EventTime_t asc
+```
+
+<img width="573" height="138" alt="Meridian Flag 7a" src="https://github.com/user-attachments/assets/44e7605f-5f73-44bc-8873-25e83cc699f2" />
+
+---
+
+### 🏁 Flag 7b – The Collection: The Tampered File
+- **Answer:**  backup.conf
+- **Discovery:** The attacker or their backdoor modified the legitimate backup job's config, caught and reverted by the final sweep. Tampering with backup configuration is an attempt to maintain access through the estate's own backup infrastructure.
+- **Key Timestamp:** 2026-02-06T05:05:02Z
+
+```kql
+MeridianDefender_CL
+| where isnotempty(EventTime_t)
+| where EventCategory_s == "SWEEP"
+| where EventTime_t < datetime(2026-02-06 05:05:06)
+| project EventTime_t, RawMessage_s
+| order by EventTime_t asc
+```
+
+<img width="438" height="123" alt="Meridian Flag 7b" src="https://github.com/user-attachments/assets/223b2665-6039-4345-9e0a-bab0043a1211" />
+
+---
+
 ## 🧠 Summary Table
 | Flag | Description                        | Value | MITRE ATT&CK | Definiton |
 |------|------------------------------------|---------------------|---------------------|---------------------|
