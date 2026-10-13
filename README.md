@@ -195,6 +195,8 @@ MeridianSnapshot_CL
 
 <img width="1444" height="143" alt="Meridian Flag 6b" src="https://github.com/user-attachments/assets/4b8e96a8-90d9-43c0-a7c2-07890a26f907" />
 
+The attacker has escalated their privileges and established persistence. We need to determine what data they were after and how they got away with it.
+
 ---
 
 ## 🧠 Summary Table
