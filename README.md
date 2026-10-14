@@ -235,6 +235,79 @@ MeridianDefender_CL
 
 ---
 
+### 🏁 Flag 8a – Defence Evasion and Detection Gaps: Signal or Setup Noise
+- **Answer:**  false positive
+- **Discovery:** The detection burst at 02:53:31 is the defence stack's own installation being misread as tampering, over 50 minutes before the first confirmed attacker activity at 03:47:26. Treating installation artifacts as attack indicators is a common triage error. The detections are real events, but the context proves they're self-generated, not attacker-driven.
+- **Key Timestamp:** 2026-02-06T02:53:31Z
+
+```kql
+MeridianDefender_CL
+| where isnotempty(EventTime_t)
+| where EventTime_t < toscalar(MeridianAccess_CL | where isnotempty(EventTime_t) and ClientIp_s == "10.1.134.57" | summarize min(EventTime_t))
+| project EventTime_t, EventCategory_s, RawMessage_s
+| order by EventTime_t asc
+```
+
+<img width="543" height="535" alt="Meridian Flag 8a" src="https://github.com/user-attachments/assets/9823036c-164b-4f39-b1bf-d26c09bfbd98" />
+
+---
+
+### 🏁 Flag 8b – Defence Evasion and Detection Gaps: Collateral Damage
+- **Answer:**  sysmon, removes process- level monitoring
+- **Discovery:** sysmon.service (Linux Sysmon), removed by the first automated sweep as a 'new/non-baseline systemd service'. This removes process-level telemetry 40 minutes before the real intrusion began. The sweep's remediation created the detection gap in the incident. Everything the attacker did after 03:08 has no process-level Sysmon coverage.
+- **Key Timestamp:** 2026-02-06T03:08:20Z
+
+```kql
+MeridianDefender_CL
+| where isnotempty(EventTime_t)
+| where EventTime_t between (datetime(2026-02-06 02:53:00) .. datetime(2026-02-06 03:15:00))
+| where RawMessage_s has_any ("systemd", ".service", "service", "Removed", "Stopped", "Disabled", "Killing")
+| project EventTime_t, EventCategory_s, RawMessage_s
+| order by EventTime_t asc
+```
+
+<img width="538" height="144" alt="Meridian Flag 8b" src="https://github.com/user-attachments/assets/1f80eaba-751c-43b5-9f87-cd63c9178738" />
+
+The very first automated sweep, long before the real intrusion starts, removes a 'new systemd service' as part of its routine cleanup. It took out something that wasn't the attacker's. The automated remediation sweep removed the service that generated process-level telemetry. This would explain why we weren't able to detect any of the attacker's moves after 03:08 PM. With this discovery, the next step is to collect forensic data and remediate the remaining dangers. 
+
+---
+
+### 🏁 Flag 9a – Response: Capturing the Evidence
+- **Answer:**  AVML, /tmp/evidence/memory.lime
+- **Discovery:** AVML is Microsoft's open-source Linux memory-acquisition tool. Proper volatile-state capture before remediation is the correct forensic response to a live backdoor.
+- **Key Timestamp:** 2026-02-06T05:27:48Z and 2026-02-06T05:28:24Z
+
+```kql
+MeridianAudit_CL
+| where isnotempty(EventTime_t)
+| where EventTime_t > datetime(2026-02-06 05:05:00)
+| where Types_s has "EXECVE"
+| where Argv_s has_any ("insmod", "lime", "avml", "memdump", "dd if=/dev/mem", "/proc/kcore", "fmem", "volatility", ".lime", "path=")
+| project EventTime_t, auid_s, uid_s, euid_s, exe_s, Argv_s, cwd_s
+| order by EventTime_t asc
+```
+
+<img width="847" height="89" alt="Meridian Flag 9a" src="https://github.com/user-attachments/assets/0877d13e-4ee7-4460-8c93-cd8c1f62fc40" />
+
+---
+
+### 🏁 Flag 9b – Response: What’s Still Live
+- **Answer:**  remove the SUID-root health_check binary from the scripts directory
+- **Discovery:** Manually kill and remove health_check; it's the one artefact nothing has touched. The sweep killed rootbash, reverted backup.conf, the admin captured memory, but health_check was only ever flagged, never remediated. The incident isn't closed until someone manually handles the one thing that fell through every automated and manual response action.
+- **Key Timestamp:** 2026-02-06T05:05:06Z
+
+```kql
+MeridianDefender_CL
+| where isnotempty(EventTime_t)
+| where EventTime_t > datetime(2026-02-06 05:05:00)
+| where RawMessage_s has "health_check"
+| project EventTime_t, EventCategory_s, RawMessage_s
+```
+
+<img width="600" height="149" alt="Meridian Flag 9b" src="https://github.com/user-attachments/assets/23507209-3080-4004-975f-eda175d368f0" />
+
+---
+
 ## 🧠 Summary Table
 | Flag | Description                        | Value | MITRE ATT&CK | Definiton |
 |------|------------------------------------|---------------------|---------------------|---------------------|
